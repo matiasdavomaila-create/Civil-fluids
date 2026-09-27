@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configurar Java JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -24,20 +24,281 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Crear proyecto Flutter si no existe
+      - name: Crear app Flutter y código de la calculadora
         run: |
-          if [ ! -f "pubspec.yaml" ]; then
-            flutter create --org com.civil.fluids --project-name civil_fluids . --force
-          fi
+          mkdir temp_app
+          cd temp_app
+          flutter create --org com.civil.fluids --project-name civil_fluids .
+          cat << 'EOF' > lib/main.dart
+          import 'dart:math';
+          import 'package:flutter/material.dart';
 
-      - name: Obtener dependencias
-        run: flutter pub get
+          void main() {
+            runApp(const FluidCalcApp());
+          }
 
-      - name: Compilar APK
-        run: flutter build apk --release
+          class FluidCalcApp extends StatelessWidget {
+            const FluidCalcApp({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                title: 'Calculadora de Fluidos',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: Colors.blue,
+                    brightness: Brightness.light,
+                  ),
+                  useMaterial3: true,
+                ),
+                home: const HomeScreen(),
+              );
+            }
+          }
+
+          class HomeScreen extends StatefulWidget {
+            const HomeScreen({super.key});
+
+            @override
+            State<HomeScreen> createState() => _HomeScreenState();
+          }
+
+          class _HomeScreenState extends State<HomeScreen> {
+            final TextEditingController _tempController = TextEditingController();
+            WaterProperties? _results;
+            String? _errorMessage;
+
+            void _calculate() {
+              setState(() {
+                _errorMessage = null;
+              });
+
+              final double? temp = double.tryParse(_tempController.text);
+              if (temp == null) {
+                setState(() {
+                  _errorMessage = 'Por favor, ingresa una temperatura válida.';
+                  _results = null;
+                });
+                return;
+              }
+
+              if (temp < -50 || temp > 100) {
+                setState(() {
+                  _errorMessage = 'Ingresa una temperatura entre -50 °C y 100 °C.';
+                  _results = null;
+                });
+                return;
+              }
+
+              setState(() {
+                _results = WaterProperties.fromTemperatureCelsius(temp);
+              });
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Propiedades de Fluidos e ISA'),
+                  centerTitle: true,
+                  backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+                ),
+                body: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Card(
+                        elevation: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              TextField(
+                                controller: _tempController,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                                decoration: InputDecoration(
+                                  labelText: 'Temperatura (°C)',
+                                  hintText: 'Ejemplo: 10.5',
+                                  border: const OutlineInputBorder(),
+                                  errorText: _errorMessage,
+                                  prefixIcon: const Icon(Icons.thermostat),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton.icon(
+                                onPressed: _calculate,
+                                icon: const Icon(Icons.calculate),
+                                label: const Text('Calcular Propiedades'),
+                                style: ElevatedButton.styleFrom(
+                                  minimumSize: const Size.fromHeight(48),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      if (_results != null) ...[
+                        const Text(
+                          'Resultados de la Atmósfera (OACI/ISA)',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        _ResultTile(
+                          icon: Icons.height,
+                          title: 'Cota de Altitud Estimada',
+                          value: '${_results!.altitude.toStringAsFixed(2)} m',
+                        ),
+                        _ResultTile(
+                          icon: Icons.compress,
+                          title: 'Presión Atmosférica',
+                          value: '${(_results!.atmPressure / 1000).toStringAsFixed(2)} kPa (${(_results!.atmPressure / 101325).toStringAsFixed(3)} atm)',
+                        ),
+                        _ResultTile(
+                          icon: Icons.air,
+                          title: 'Densidad del Aire',
+                          value: '${_results!.airDensity.toStringAsFixed(4)} kg/m³',
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Propiedades del Agua',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        _ResultTile(
+                          icon: Icons.water_drop,
+                          title: 'Densidad del Agua',
+                          value: '${_results!.waterDensity.toStringAsFixed(2)} kg/m³',
+                        ),
+                        _ResultTile(
+                          icon: Icons.scale,
+                          title: 'Peso Específico',
+                          value: '${(_results!.specificWeight / 1000).toStringAsFixed(3)} kN/m³',
+                        ),
+                        _ResultTile(
+                          icon: Icons.speed,
+                          title: 'Viscosidad Dinámica',
+                          value: '${_results!.dynamicViscosity.toStringAsExponential(3)} Pa·s',
+                        ),
+                        _ResultTile(
+                          icon: Icons.unfold_less,
+                          title: 'Módulo de Elasticidad Volumétrico',
+                          value: '${(_results!.bulkModulus / 1e9).toStringAsFixed(2)} GPa',
+                        ),
+                        _ResultTile(
+                          icon: Icons.cloud,
+                          title: 'Presión de Vapor',
+                          value: '${(_results!.vaporPressure / 1000).toStringAsFixed(3)} kPa',
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+
+          class _ResultTile extends StatelessWidget {
+            final IconData icon;
+            final String title;
+            final String value;
+
+            const _ResultTile({
+              required this.icon,
+              required this.title,
+              required this.value,
+            });
+
+            @override
+            Widget build(BuildContext context) {
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: ListTile(
+                  leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+                  title: Text(title, style: const TextStyle(fontSize: 14, color: Colors.black87)),
+                  subtitle: Text(
+                    value,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black),
+                  ),
+                ),
+              );
+            }
+          }
+
+          class WaterProperties {
+            final double altitude;
+            final double atmPressure;
+            final double airDensity;
+            final double waterDensity;
+            final double specificWeight;
+            final double dynamicViscosity;
+            final double bulkModulus;
+            final double vaporPressure;
+
+            WaterProperties({
+              required this.altitude,
+              required this.atmPressure,
+              required this.airDensity,
+              required this.waterDensity,
+              required this.specificWeight,
+              required this.dynamicViscosity,
+              required this.bulkModulus,
+              required this.vaporPressure,
+            });
+
+            factory WaterProperties.fromTemperatureCelsius(double tempC) {
+              double tempK = tempC + 273.15;
+              const double g = 9.80665;
+              const double T0 = 288.15;
+              const double L = 0.0065;
+              const double P0 = 101325.0;
+              const double R = 287.05;
+
+              double altitude = (T0 - tempK) / L;
+              if (altitude < 0) altitude = 0;
+
+              double atmPressure = P0 * pow((1 - (L * altitude) / T0), (g / (R * L)));
+              double airDensity = atmPressure / (R * tempK);
+
+              double waterDensity = 999.83952 +
+                  (16.945176 * tempC) -
+                  (7.9870401e-3 * pow(tempC, 2)) -
+                  (46.170461e-6 * pow(tempC, 3)) +
+                  (105.56302e-9 * pow(tempC, 4)) -
+                  (280.54253e-12 * pow(tempC, 5));
+
+              double specificWeight = waterDensity * g;
+              double dynamicViscosity = 2.414e-5 * pow(10, (247.8 / (tempK - 140)));
+              double bulkModulus = (2.15 + (0.005 * tempC)) * 1e9;
+
+              double log10P = 8.07131 - (1730.63 / (tempC + 233.426));
+              double pVapormmHg = pow(10, log10P) as double;
+              double vaporPressure = pVapormmHg * 133.322;
+
+              return WaterProperties(
+                altitude: altitude,
+                atmPressure: atmPressure,
+                airDensity: airDensity,
+                waterDensity: waterDensity,
+                specificWeight: specificWeight,
+                dynamicViscosity: dynamicViscosity,
+                bulkModulus: bulkModulus,
+                vaporPressure: vaporPressure,
+              );
+            }
+          }
+          EOF
+
+      - name: Obtener dependencias y compilar
+        run: |
+          cd temp_app
+          flutter pub get
+          flutter build apk --release
 
       - name: Subir APK como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: app-release.apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: temp_app/build/app/outputs/flutter-apk/app-release.apk
