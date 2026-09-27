@@ -16,13 +16,19 @@ jobs:
       - name: Configurar Java JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+
+      - name: Crear proyecto Flutter si no existe
+        run: |
+          if [ ! -f "pubspec.yaml" ]; then
+            flutter create --org com.civil.fluids --project-name civil_fluids . --force
+          fi
 
       - name: Obtener dependencias
         run: flutter pub get
