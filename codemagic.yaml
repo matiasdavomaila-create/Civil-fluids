@@ -1,0 +1,16 @@
+workflows:
+  android-debug:
+    name: CIVIL FLUIDS - Android APK
+    max_build_duration: 60
+    environment:
+      flutter: stable
+    scripts:
+      - name: Generar archivos Android
+        script: |
+          flutter create --platforms=android --org com.civilfluids --project-name civil_fluids .
+      - name: Instalar dependencias
+        script: flutter pub get
+      - name: Construir APK de prueba
+        script: flutter build apk --debug
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
